@@ -6,6 +6,12 @@ public class ArcherControle : MonoBehaviour
     public float vitesseRotation = 100.0f;
     public float forceSaut = 5.0f;
 
+    // --- C'est ici que ça se joue ---
+    // Vérifiez bien que ces lignes sont là après le collage
+    public GameObject flechePrefab;  
+    public Transform pointDeTir;     
+    public float vitesseFleche = 20.0f; 
+
     private Rigidbody rb;
     private Animator anim;
 
@@ -21,7 +27,6 @@ public class ArcherControle : MonoBehaviour
         float marche = Input.GetAxis("Vertical");
         transform.Translate(0, 0, marche * vitesseMarche * Time.deltaTime);
 
-        // --- ANIMATION MARCHE ---
         if (marche != 0)
         {
             anim.SetBool("Avance", true);
@@ -35,15 +40,45 @@ public class ArcherControle : MonoBehaviour
         float rotation = Input.GetAxis("Horizontal") * vitesseRotation * Time.deltaTime;
         transform.Rotate(0, rotation, 0);
 
-        // --- SAUT (Partie modifiée) ---
+        // --- SAUT ---
         if (Input.GetKeyDown(KeyCode.Space))
         {
-            // 1. On applique la force physique (comme avant)
             rb.AddForce(Vector3.up * forceSaut, ForceMode.Impulse);
-
-            // 2. NOUVELLE LIGNE : On déclenche l'animation !
-            // On utilise "SetTrigger" car c'est une action unique
             anim.SetTrigger("Saut");
+        }
+
+        // --- ROULADE ---
+        if (Input.GetKeyDown(KeyCode.LeftShift))
+        {
+            anim.SetTrigger("Roulade");
+        }
+
+        // --- TIR ---
+        if (Input.GetMouseButtonDown(0)) 
+        {
+            anim.SetTrigger("Tir");
+            CreateArrow();
+        }
+    }
+
+    void CreateArrow()
+    {
+        // Sécurité : On ne tire que si les liens sont faits
+        if (flechePrefab != null && pointDeTir != null)
+        {
+            GameObject maFleche = Instantiate(flechePrefab, pointDeTir.position, transform.rotation);
+            Rigidbody rbFleche = maFleche.GetComponent<Rigidbody>();
+            
+            if (rbFleche != null)
+            {
+                rbFleche.velocity = transform.forward * vitesseFleche;
+            }
+            
+            Destroy(maFleche, 3.0f);
+        }
+        else
+        {
+            Debug.LogError("Erreur : Il manque la flèche ou le point de tir dans l'Inspecteur !");
         }
     }
 }
