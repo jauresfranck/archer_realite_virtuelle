@@ -7,42 +7,43 @@ public class ArcherControle : MonoBehaviour
     public float forceSaut = 5.0f;
 
     private Rigidbody rb;
-    private Animator anim; // On ajoute la référence à l'animateur
+    private Animator anim;
 
     void Start()
     {
         rb = GetComponent<Rigidbody>();
-        anim = GetComponent<Animator>(); // On récupère l'animateur au démarrage
+        anim = GetComponent<Animator>();
     }
 
     void Update()
     {
         // --- DEPLACEMENT ---
-        // On récupère la valeur (W/S ou Flèches Haut/Bas)
-        float marche = Input.GetAxis("Vertical"); 
-        
-        // On bouge physiquement
+        float marche = Input.GetAxis("Vertical");
         transform.Translate(0, 0, marche * vitesseMarche * Time.deltaTime);
 
-        // --- ANIMATION ---
-        // Si "marche" n'est pas égal à 0, c'est qu'on appuie sur une touche
-        if (marche != 0) 
+        // --- ANIMATION MARCHE ---
+        if (marche != 0)
         {
-            anim.SetBool("Avancer", true); // Lance l'animation de course
+            anim.SetBool("Avance", true);
         }
-        else 
+        else
         {
-            anim.SetBool("Avancer", false); // Revient à l'animation de visée
+            anim.SetBool("Avance", false);
         }
 
         // --- ROTATION ---
         float rotation = Input.GetAxis("Horizontal") * vitesseRotation * Time.deltaTime;
         transform.Rotate(0, rotation, 0);
 
-        // --- SAUT ---
+        // --- SAUT (Partie modifiée) ---
         if (Input.GetKeyDown(KeyCode.Space))
         {
+            // 1. On applique la force physique (comme avant)
             rb.AddForce(Vector3.up * forceSaut, ForceMode.Impulse);
+
+            // 2. NOUVELLE LIGNE : On déclenche l'animation !
+            // On utilise "SetTrigger" car c'est une action unique
+            anim.SetTrigger("Saut");
         }
     }
 }
