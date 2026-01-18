@@ -1,7 +1,7 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-[RequireComponent(typeof(LineRenderer))] // Ajoute auto le LineRenderer
+[RequireComponent(typeof(LineRenderer))] // Ajoute automatiquement le LineRenderer si absent
 public class ArcherVR_Complet : MonoBehaviour
 {
     [Header("Composants")]
@@ -13,39 +13,41 @@ public class ArcherVR_Complet : MonoBehaviour
     public float gravity = -9.81f;
     public float forceSaut = 5.0f;
 
-    [Header("Configuration VR")]
-    public Transform cameraTransform;
-    public InputActionProperty moveAction; // Joystick Droit
+    [Header("Configuration VR (Inputs)")]
+    public Transform cameraTransform;      // GLISSER LA MAIN CAMERA ICI
+    public InputActionProperty moveAction; // Joystick Droit (Locomotion)
     public InputActionProperty jumpAction; // Bouton A
     public InputActionProperty rollAction; // Bouton B
-    public InputActionProperty fireAction; // Gâchette
+    public InputActionProperty fireAction; // Gâchette Index (Tir)
 
-    [Header("Rotation Tête")]
+    [Header("Rotation Tête (Anti-Tournis)")]
     public float rotationSmoothing = 5f;
     public float rotationThreshold = 20f;
 
     [Header("Combat & Visée")]
     public GameObject flechePrefab;
-    public Transform pointDeTir;
-    public float vitesseFleche = 20.0f;
+    public Transform pointDeTir;         // L'objet vide devant la main/arc
+    public float vitesseFleche = 15.0f;  // Vitesse ajustée pour mieux voir la flèche
     
-    // NOUVEAU : Réglages de la ligne de visée
+    [Header("Réglages Trajectoire")]
     public int resolutionTrajectoire = 30; // Nombre de points de la ligne
-    public float tempsVision = 2.0f; // Jusqu'où on voit (en secondes de vol)
+    public float tempsVision = 2.0f;       // Portée du viseur
     private LineRenderer lineRenderer;
 
-    private Vector3 velocity; // Vitesse verticale du joueur
+    private Vector3 velocity; // Vitesse verticale (Chute/Saut)
 
     void Start()
     {
-        // On récupère le LineRenderer et on le configure
+        // Initialisation propre du Line Renderer
         lineRenderer = GetComponent<LineRenderer>();
-        lineRenderer.enabled = false; // Caché par défaut
+        lineRenderer.enabled = false; // On le cache au début
         lineRenderer.positionCount = resolutionTrajectoire;
+        lineRenderer.useWorldSpace = true; // Important pour la physique
     }
 
     void OnEnable()
     {
+        // Activation sécurisée des inputs
         if (moveAction.action != null) moveAction.action.Enable();
         if (jumpAction.action != null) jumpAction.action.Enable();
         if (rollAction.action != null) rollAction.action.Enable();
@@ -54,43 +56,46 @@ public class ArcherVR_Complet : MonoBehaviour
 
     void Update()
     {
-        // Sécurité Input
+        // Sécurité : On réactive le joystick s'il saute
         if (moveAction.action != null && !moveAction.action.enabled) moveAction.action.Enable();
 
-        // ---------------------------------------------------------
-        // 1. GESTION DE LA VISÉE ET DU TIR (NOUVEAU)
-        // ---------------------------------------------------------
+        // =========================================================
+        // 1. GESTION DU TIR (Maintenir pour Viser -> Relâcher pour Tirer)
+        // =========================================================
         if (fireAction.action != null)
         {
-            // TANT QU'ON APPUIE : On montre la trajectoire
+            // TANT QU'ON APPUIE : On affiche la courbe
             if (fireAction.action.IsPressed())
             {
                 lineRenderer.enabled = true;
-                MontrerTrajectoire();
+                CalculerTrajectoire();
             }
-            // QUAND ON RELACHE : On tire
+            // AU MOMENT OU ON LÂCHE : On tire
             else if (fireAction.action.WasReleasedThisFrame())
             {
-                lineRenderer.enabled = false;
+                lineRenderer.enabled = false; // On cache la ligne
                 animator.SetTrigger("Tir");
-                CreateArrow();
+                TirerFleche();
             }
+            // SINON : On s'assure que c'est caché
             else
             {
                 lineRenderer.enabled = false;
             }
         }
 
-        // ---------------------------------------------------------
-        // 2. ROTATION (Tête)
-        // ---------------------------------------------------------
+        // =========================================================
+        // 2. ROTATION DU CORPS (Suit la tête)
+        // =========================================================
         if (cameraTransform != null)
         {
             float angleDifference = Mathf.Abs(Mathf.DeltaAngle(transform.eulerAngles.y, cameraTransform.eulerAngles.y));
+            
+            // Si la tête tourne trop par rapport au corps, le corps suit doucement
             if (angleDifference > rotationThreshold)
             {
                 Vector3 direction = cameraTransform.forward;
-                direction.y = 0;
+                direction.y = 0; // On garde le corps à plat
                 if (direction != Vector3.zero)
                 {
                     Quaternion targetRotation = Quaternion.LookRotation(direction);
@@ -99,15 +104,18 @@ public class ArcherVR_Complet : MonoBehaviour
             }
         }
 
-        // ---------------------------------------------------------
-        // 3. MOUVEMENT (Joystick Droit)
-        // ---------------------------------------------------------
+        // =========================================================
+        // 3. DEPLACEMENT (Joystick Droit)
+        // =========================================================
         Vector2 moveInput = Vector2.zero;
         if (moveAction.action != null) moveInput = moveAction.action.ReadValue<Vector2>();
 
         Vector3 moveDirection = Vector3.zero;
+        
+        // Zone morte de 0.1 pour éviter que ça bouge tout seul
         if (moveInput.magnitude > 0.1f)
         {
+            // On se déplace par rapport à l'orientation du joueur
             moveDirection = transform.right * moveInput.x + transform.forward * moveInput.y;
             moveDirection *= speed;
             animator.SetBool("Avance", true);
@@ -117,10 +125,11 @@ public class ArcherVR_Complet : MonoBehaviour
             animator.SetBool("Avance", false);
         }
 
-        // ---------------------------------------------------------
-        // 4. GRAVITÉ & SAUT
-        // ---------------------------------------------------------
-        if (controller.isGrounded && velocity.y < 0) velocity.y = -2f;
+        // =========================================================
+        // 4. GRAVITÉ ET SAUT
+        // =========================================================
+        if (controller.isGrounded && velocity.y < 0) 
+            velocity.y = -2f; // Plaque au sol
 
         if (jumpAction.action != null && jumpAction.action.WasPressedThisFrame() && controller.isGrounded)
         {
@@ -130,44 +139,54 @@ public class ArcherVR_Complet : MonoBehaviour
 
         velocity.y += gravity * Time.deltaTime;
 
-        // ---------------------------------------------------------
-        // 5. APPLICATION PHYSIQUE
-        // ---------------------------------------------------------
+        // =========================================================
+        // 5. APPLICATION PHYSIQUE (Un seul Move pour éviter les vibrations)
+        // =========================================================
         Vector3 finalMovement = (moveDirection + velocity) * Time.deltaTime;
         controller.Move(finalMovement);
 
+        // ROULADE
         if (rollAction.action != null && rollAction.action.WasPressedThisFrame()) 
             animator.SetTrigger("Roulade");
     }
 
-    // --- FONCTION MATHEMATIQUE POUR DESSINER LA COURBE ---
-    void MontrerTrajectoire()
+    // --- CALCUL DE LA COURBE DE VISÉE ---
+    void CalculerTrajectoire()
     {
         if (pointDeTir == null) return;
 
         Vector3 depart = pointDeTir.position;
-        Vector3 vitesseInitiale = pointDeTir.forward * vitesseFleche; // La force du tir
+        // On utilise le "Forward" du point de tir (Flèche Bleue)
+        Vector3 vitesseInitiale = pointDeTir.forward * vitesseFleche; 
 
-        // On calcule les points de la courbe physique
         for (int i = 0; i < resolutionTrajectoire; i++)
         {
             float tempsSimule = (float)i / (float)resolutionTrajectoire * tempsVision;
             
-            // Formule physique : Position = Départ + (Vitesse * temps) + (0.5 * Gravité * temps^2)
+            // Formule physique : P = P0 + Vt + 0.5gt²
             Vector3 point = depart + (vitesseInitiale * tempsSimule) + (Physics.gravity * 0.5f * tempsSimule * tempsSimule);
             
             lineRenderer.SetPosition(i, point);
         }
     }
 
-    void CreateArrow()
+    // --- CRÉATION DE LA FLÈCHE ---
+    void TirerFleche()
     {
         if (flechePrefab && pointDeTir)
         {
-            GameObject maFleche = Instantiate(flechePrefab, pointDeTir.position, transform.rotation);
+            // CORRECTION : On utilise la rotation du PointDeTir, pas celle du joueur
+            GameObject maFleche = Instantiate(flechePrefab, pointDeTir.position, pointDeTir.rotation);
+            
             Rigidbody rb = maFleche.GetComponent<Rigidbody>();
-            if (rb) rb.velocity = transform.forward * vitesseFleche;
-            Destroy(maFleche, 5.0f);
+            if (rb)
+            {
+                rb.velocity = Vector3.zero; // Reset de sécurité
+                // On propulse dans la direction de la flèche bleue du PointDeTir
+                rb.velocity = pointDeTir.forward * vitesseFleche;
+            }
+            
+            Destroy(maFleche, 5.0f); // Nettoyage après 5 secondes
         }
     }
 }
